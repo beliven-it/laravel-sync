@@ -1,0 +1,946 @@
+#!/bin/bash
+
+SRC_DATABASE_HOST=""
+SRC_DATABASE_PORT=""
+SRC_DATABASE_USER=""
+SRC_DATABASE_PASSWORD=""
+SRC_DATABASE_NAME=""
+SRC_DATABASE_DRIVER=""
+
+DST_DATABASE_HOST=""
+DST_DATABASE_PORT=""
+DST_DATABASE_USER=""
+DST_DATABASE_PASSWORD=""
+DST_DATABASE_NAME=""
+DST_DATABASE_DRIVER=""
+
+IGNORE_DATABASE=false
+IGNORE_ASSETS=false
+USE_DOCKER=false
+SENDBOX=false
+SKIP_CONFIRMATION=false
+SKIP_CLEANUP=false
+IS_CONFIRMED=false
+
+CONFIG_FILE=".env"
+ZIP_FILENAME="dump.zip"
+SQL_FILENAME="dump.sql"
+
+REMOTE_COLOR="red"
+LOCAL_COLOR="green"
+
+# Trap the exit signal to cleanup the dump files
+trap _cleanup EXIT
+
+# PULL COMMAND
+# pull the database and assets from the remote environment to the local environment
+#
+# @environment = staging, production
+# @gnore_database = true, false
+# @ignore_assets = true, false
+function pull() {
+    local environment="$1"
+    local ignore_database="$2"
+    local ignore_assets="$3"
+
+    echo "PULL $environment -> LOCAL"
+
+    _get_src_environment "$environment"
+    _get_dst_environment "local"
+
+    local remote_environment_label
+    remote_environment_label=$(_colors "[$environment]" "$REMOTE_COLOR")
+
+    local local_environment_label
+    local_environment_label=$(_colors "[local]" "$LOCAL_COLOR")
+
+    local db_label
+    db_label=$(_colors '[DATABASE]' 'cyan')
+
+    local asset_label
+    asset_label=$(_colors '[ASSETS]' 'cyan')
+
+    local action_label
+
+    if [ "$ignore_database" = false ]; then
+        echo -e "\n------------------------"
+        action_label=$(_colors 'DUMP DATABASE' 'yellow' )
+        echo -e "\n$db_label $remote_environment_label - $action_label"
+        _dump "$environment" "$SQL_FILENAME"
+
+        action_label=$(_colors 'DOWNLOAD DUMP' 'yellow' )
+        echo -e "\n$db_label $remote_environment_label - $action_label"
+        _download "$environment" "$SQL_FILENAME"
+
+        action_label=$(_colors 'RESTORE DATABASE' 'yellow' )
+        echo -e "\n$db_label $local_environment_label - $action_label"
+        _restore "local" "$SQL_FILENAME"
+    fi
+
+    if [ "$ignore_assets" = false ]; then
+        echo -e "\n------------------------"
+        action_label=$(_colors 'ZIP CONTENTS' 'yellow' )
+        echo -e "\n$asset_label $remote_environment_label - $action_label"
+        _zip "$environment" "$ZIP_FILENAME"
+
+        action_label=$(_colors 'DOWNLOAD ARCHIVE' 'yellow' )
+        echo -e "\n$asset_label $remote_environment_label - $action_label"
+        _download "$environment" "$ZIP_FILENAME"
+
+        action_label=$(_colors 'UNZIP CONTENTS' 'yellow' )
+        echo -e "\n$asset_label $local_environment_label - $action_label"
+        _unzip "local" "$ZIP_FILENAME"
+    fi
+
+    IS_CONFIRMED=true
+}
+
+# PUSH COMMAND
+# push the database and assets to the remote environment from the local environment
+#
+# @environment = staging, production
+# @ignore_database = true, false
+# @ignore_assets = true, false
+function push() {
+    local environment="$1"
+    local ignore_database="$2"
+    local ignore_assets="$3"
+
+    echo "PUSH LOCAL -> $environment"
+
+    _get_src_environment "local"
+    _get_dst_environment "$environment"
+
+    local remote_environment_label
+    remote_environment_label=$(_colors "[$environment]" "$REMOTE_COLOR")
+
+    local local_environment_label
+    local_environment_label=$(_colors "[local]" "$LOCAL_COLOR")
+
+    local db_label
+    db_label=$(_colors '[DATABASE]' 'cyan')
+
+    local asset_label
+    asset_label=$(_colors '[ASSETS]' 'cyan')
+
+    local action_label
+
+    if [ "$ignore_database" = false ]; then
+        echo -e "\n------------------------"
+        action_label=$(_colors 'DUMP DATABASE' 'yellow' )
+        echo -e "\n$db_label $local_environment_label - $action_label"
+        _dump "local" "$SQL_FILENAME"
+
+        action_label=$(_colors 'UPLOAD DUMP' 'yellow' )
+        echo -e "\n$db_label $remote_environment_label - $action_label"
+        _upload "$environment" "$SQL_FILENAME"
+
+        action_label=$(_colors 'RESTORE DATABASE' 'yellow' )
+        echo -e "\n$db_label $remote_environment_label - $action_label"
+        _restore "$environment" "$SQL_FILENAME"
+    fi
+
+    if [ "$ignore_assets" = false ]; then
+        echo -e "\n------------------------"
+        action_label=$(_colors 'ZIP CONTENTS' 'yellow' )
+        echo -e "\n$asset_label $local_environment_label - $action_label"
+        _zip "local" "$ZIP_FILENAME"
+
+        action_label=$(_colors 'UPLOAD ARCHIVE' 'yellow' )
+        echo -e "\n$asset_label $remote_environment_label - $action_label"
+        _upload "$environment" "$ZIP_FILENAME"
+
+        action_label=$(_colors 'UNZIP CONTENTS' 'yellow' )
+        echo -e "\n$asset_label $remote_environment_label - $action_label"
+        _unzip "$environment" "$ZIP_FILENAME"
+    fi
+
+    IS_CONFIRMED=true
+}
+
+# HAS ENVIRONMENT
+# check if the environment is allowed; otherwise exit with an error
+#
+# @environment = staging, production
+function _has_environment() {
+    local environment="$1"
+
+    if [ "$environment" = "local" ]; then
+        return
+    fi
+
+    local available_environments
+    available_environments=$(_get_env_by_key "" "allowed")
+
+    local in_array
+    in_array=$(echo "$available_environments" | grep "$environment")
+
+    if [ -z "$in_array" ]; then
+        echo "Environment $environment not allowed. Make sure to set the environment in the allowed list"
+        echo "SYNC_ENVIRONMENT_ALLOWED='staging production'"
+        exit 1
+    fi
+}
+
+# SETUP
+# setup the default values for the configuration file
+#
+function _setup() {
+    read -ra default_envs_keys_array <<< "$(_get_env_by_key "" "allowed")"
+
+    local default_db_keys_array
+    default_db_keys_array=("db_host" "db_port" "db_username" "db_password" "db_database" "db_connection")
+
+    local default_host_keys_array
+    default_host_keys_array=("host_hostname" "host_port" "host_user" "host_base_path")
+
+    local content
+    content=$(<"$CONFIG_FILE")
+
+    # Create the default for assets
+    local value
+    value=$(grep "SYNC_ENVIRONMENT_ASSETS" "$CONFIG_FILE")
+    if [ -z "$value" ]; then
+        echo "SYNC_ENVIRONMENT_ASSETS='storage/statamic/glide/containers'" >> "$CONFIG_FILE"
+        echo " " >> "$CONFIG_FILE"
+    fi
+
+    # Create the default for local values
+    local local_env
+    local_env=$(echo "local" | tr '[:lower:]' '[:upper:]')
+
+    local count
+    count=0
+
+    for key in "${default_db_keys_array[@]}"; do
+        key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+
+        var_name="SYNC_ENVIRONMENT_${local_env}_${key}"
+        value=$(echo "$content" | grep "$var_name")
+
+        if [ -z "$value" ]; then
+            echo "$var_name=\"\${$key}\"" >> "$CONFIG_FILE"
+            count=$((count+1))
+        fi
+    done
+    if [ $count -gt 0 ]; then
+        echo " " >> "$CONFIG_FILE"
+    fi
+
+    # Create the default for other environments
+    for env in "${default_envs_keys_array[@]}"; do
+        count=0
+        for key in "${default_db_keys_array[@]}"; do
+            key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+            env=$(echo "$env" | tr '[:lower:]' '[:upper:]')
+
+            var_name="SYNC_ENVIRONMENT_${env}_${key}"
+
+            value=$(echo "$content" | grep "$var_name")
+            if [ -z "$value" ]; then
+                echo "$var_name=$value" >> "$CONFIG_FILE"
+                count=$((count+1))
+            fi
+        done
+        if [ $count -gt 0 ]; then
+            echo " " >> "$CONFIG_FILE"
+        fi
+
+        count=0
+        for key in "${default_host_keys_array[@]}"; do
+            key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+            env=$(echo "$env" | tr '[:lower:]' '[:upper:]')
+
+            var_name="SYNC_ENVIRONMENT_${env}_${key}"
+
+            value=$(echo "$content" | grep "$var_name")
+            if [ -z "$value" ]; then
+                echo "$var_name=$value" >> "$CONFIG_FILE"
+                count=$((count+1))
+            fi
+        done
+        if [ $count -gt 0 ]; then
+            echo " " >> "$CONFIG_FILE"
+        fi
+    done
+
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+}
+
+# CLEANUP LOCAL
+# cleanup the local environment from the dump files
+#
+function _cleanup_local() {
+    local environment_label
+    environment_label=$(_colors "[local]" "$LOCAL_COLOR")
+
+    local db_label
+    db_label=$(_colors '[DATABASE]' 'cyan')
+
+    local asset_label
+    asset_label=$(_colors '[ASSETS]' 'cyan')
+
+    local action_label
+    action_label=$(_colors 'CLEANUP' 'yellow' )
+
+    local zip_filename
+    zip_filename=$(_get_fullpath "local" "$ZIP_FILENAME")
+
+    local sql_filename
+    sql_filename=$(_get_fullpath "local" "$SQL_FILENAME")
+
+    local command
+
+    echo -e "\n$db_label $environment_label - $action_label"
+    command=$(_command_by_host "rm -rf '$sql_filename'" "local")
+    _execute "$command" false
+
+    echo -e "\n$asset_label $environment_label - $action_label"
+    command=$(_command_by_host "rm -rf '$zip_filename'" "local")
+    _execute "$command" false
+}
+
+# CLEANUP REMOTE
+# cleanup the remote environment from the dump files
+#
+function _cleanup_remote() {
+    local environment_label
+    environment_label=$(_colors "[$ENVIRONMENT]" "$REMOTE_COLOR")
+
+    local db_label
+    db_label=$(_colors '[DATABASE]' 'cyan')
+
+    local asset_label
+    asset_label=$(_colors '[ASSETS]' 'cyan')
+
+    local action_label
+    action_label=$(_colors 'CLEANUP' 'yellow' )
+
+    local zip_filename
+    zip_filename=$(_get_fullpath "$ENVIRONMENT" "$ZIP_FILENAME")
+
+    local sql_filename
+    sql_filename=$(_get_fullpath "$ENVIRONMENT" "$SQL_FILENAME")
+
+    local command
+
+    echo -e "\n$db_label $environment_label - $action_label"
+    command=$(_command_by_host "rm -rf '$sql_filename'" "$ENVIRONMENT")
+    _execute "$command" false
+
+    echo -e "\n$asset_label $environment_label - $action_label"
+    command=$(_command_by_host "rm -rf '$zip_filename'" "$ENVIRONMENT")
+    _execute "$command" false
+}
+
+# CLEANUP
+# cleanup the all the environments used from the dump files
+#
+function _cleanup() {
+    if [ "$IS_CONFIRMED" = false ]; then
+        return
+    fi
+
+    echo -e "\n------------------------"
+
+    if [ "$SKIP_CLEANUP" = true ]; then
+        echo "Skip cleanup..."
+        return
+    fi
+
+    _cleanup_local
+    _cleanup_remote
+}
+
+# GET ENV BY KEY
+# return the value of the environment variable by key and environment
+#
+# @environment = staging, production, local, ...
+# @key = db_host, db_port, db_username, db_password, db_database, db_connection, ...
+function _get_env_by_key() {
+    local environment="$1"
+    local key="$2"
+
+    key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+    environment=$(echo "$environment" | tr '[:lower:]' '[:upper:]')
+
+    if [ -z "$environment" ]; then
+        var_name="SYNC_ENVIRONMENT_${key}"
+        value=${!var_name}
+
+        echo "$value"
+        return
+    fi
+
+    var_name="SYNC_ENVIRONMENT_${environment}_${key}"
+    value=${!var_name}
+
+    echo "$value"
+}
+
+# GET RESTORE COMMAND BY DRIVER
+# return the database restore command by driver
+#
+# @driver = mysql      | The database driver
+# @filename = dump.sql | The dump filename to restore
+function _get_restore_command_by_driver() {
+    local driver="$1"
+    local filename="$2"
+
+    case $driver in
+        "mysql")
+            password_partial="--password"
+            if [ -n "$DST_DATABASE_PASSWORD" ]; then
+                password_partial="--password='$DST_DATABASE_PASSWORD'"
+            fi
+
+            echo "mysql --port=$DST_DATABASE_PORT --host=$DST_DATABASE_HOST --user=$DST_DATABASE_USER $password_partial $DST_DATABASE_NAME < $filename"
+            ;;
+        *)
+            echo "Driver not supported $driver"
+            exit 1
+            ;;
+    esac
+}
+
+# GET DUMP COMMAND BY DRIVER
+# return the database dump command by driver
+#
+# @driver = mysql      | The database driver
+# @filename = dump.sql | The filename to save the dump
+function _get_dump_command_by_driver() {
+    local driver="$1"
+    local filename="$2"
+
+    case $driver in
+        "mysql")
+            local password_partial="--password"
+            if [ -n "$SRC_DATABASE_PASSWORD" ]; then
+                password_partial="--password='$SRC_DATABASE_PASSWORD'"
+            fi
+
+            echo "mysqldump --add-drop-table --no-tablespaces --port=$SRC_DATABASE_PORT --host=$SRC_DATABASE_HOST --user=$SRC_DATABASE_USER $password_partial $SRC_DATABASE_NAME > $filename"
+            ;;
+        *)
+            echo "Driver not supported $driver"
+            exit 1
+            ;;
+    esac
+}
+
+# GET ASSETS
+# return the list of folders to consider as assets
+#
+function _get_assets() {
+    local assets
+    assets=$(_get_env_by_key "" "assets")
+
+    echo "$assets";
+}
+
+# GET FULLPATH
+# return the full path of the filename based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql, dump.zip, ...
+function _get_fullpath() {
+    local environment="$1"
+    local filename="$2"
+
+    local base_path
+    base_path=$(_get_env_by_key "$environment" "host_base_path")
+
+    if [ -z "$base_path" ]; then
+        echo "$filename"
+        return
+    fi
+
+    echo "$base_path/$filename"
+}
+
+# GET SSH CONNECTION
+# return the ssh connection string based on the environment
+#
+# @environment = staging, production, local, ...
+function _get_ssh_connection() {
+    local environment="$1"
+
+    local hostname
+    hostname=$(_get_env_by_key "$environment" "host_hostname")
+
+    if [ -z "$hostname" ]; then
+        return
+    fi
+
+    local port
+    port=$(_get_env_by_key "$environment" "host_port")
+
+    local user
+    user=$(_get_env_by_key "$environment" "host_user")
+
+    local base_path
+    base_path=$(_get_env_by_key "$environment" "host_base_path")
+
+    echo "ssh -q -p $port $user@$hostname"
+}
+
+# GET SCP UPLOAD COMMAND
+# return the scp upload command string based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql, dump.zip, ...
+function _get_scp_upload_command() {
+    local environment="$1"
+    local filename="$2"
+
+    local hostname
+    hostname=$(_get_env_by_key "$environment" "host_hostname")
+
+    if [ -z "$hostname" ]; then
+        return
+    fi
+
+    local port
+    port=$(_get_env_by_key "$environment" "host_port")
+
+    local user
+    user=$(_get_env_by_key "$environment" "host_user")
+
+    local base_path
+    base_path=$(_get_env_by_key "$environment" "host_base_path")
+
+    echo "scp -q -P $port $filename $user@$hostname:$base_path"
+}
+
+# GET SCP DOWNLOAD COMMAND
+# return the scp download command string based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql, dump.zip, ...
+function _get_scp_download_command() {
+    local environment="$1"
+    local filename="$2"
+
+    local hostname
+    hostname=$(_get_env_by_key "$environment" "host_hostname")
+
+    if [ -z "$hostname" ]; then
+        return
+    fi
+
+    local port
+    port=$(_get_env_by_key "$environment" "host_port")
+
+    local user
+    user=$(_get_env_by_key "$environment" "host_user")
+
+    local base_path
+    base_path=$(_get_env_by_key "$environment" "host_base_path")
+
+    echo "scp -q -P $port $user@$hostname:$base_path/$filename ."
+}
+
+# COMMAND BY HOST
+# return a command wrapped by the ssh connection based on the environment if required
+#
+# @command = mysqldump -u ... > dump.sql
+# @environment = staging, production, local, ...
+function _command_by_host() {
+    local command="$1"
+    local environment="$2"
+
+    local wrap_command
+    wrap_command=$(_get_ssh_connection "$environment")
+
+    if [ -z "$wrap_command" ]; then
+        echo "$command"
+        return
+    fi
+
+    echo "$wrap_command '$command'"
+}
+
+# GET SRC ENVIRONMENT
+# set the source environment variables based on the environment
+#
+# @environment = staging, production, local, ...
+function _get_src_environment() {
+    local environment="$1"
+
+    _has_environment "$environment"
+
+    SRC_DATABASE_HOST=$(_get_env_by_key "$environment" "db_host")
+    SRC_DATABASE_PORT=$(_get_env_by_key "$environment" "db_port")
+    SRC_DATABASE_USER=$(_get_env_by_key "$environment" "db_username")
+    SRC_DATABASE_NAME=$(_get_env_by_key "$environment" "db_database")
+    SRC_DATABASE_PASSWORD=$(_get_env_by_key "$environment" "db_password")
+    SRC_DATABASE_DRIVER=$(_get_env_by_key "$environment" "db_connection")
+}
+
+# GET DST ENVIRONMENT
+# set the destination environment variables based on the environment
+#
+# @environment = staging, production, local, ...
+function _get_dst_environment() {
+    local environment="$1"
+
+    _has_environment "$environment"
+
+    DST_DATABASE_HOST=$(_get_env_by_key "$environment" "db_host")
+    DST_DATABASE_PORT=$(_get_env_by_key "$environment" "db_port")
+    DST_DATABASE_USER=$(_get_env_by_key "$environment" "db_username")
+    DST_DATABASE_NAME=$(_get_env_by_key "$environment" "db_database")
+    DST_DATABASE_PASSWORD=$(_get_env_by_key "$environment" "db_password")
+    DST_DATABASE_DRIVER=$(_get_env_by_key "$environment" "db_connection")
+}
+
+# IS LOCAL
+# check if the environment is local
+#
+# @environment = staging, production, local, ...
+function _is_local() {
+    local environment="$1"
+
+    if [ "$environment" = "local" ]; then
+        echo true
+        return
+    fi
+
+    echo false
+}
+
+# DUMP
+# dump the database based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql
+function _dump() {
+    local environment="$1"
+    local filename="$2"
+
+    filename=$(_get_fullpath "$environment" "$filename")
+
+    local command
+    if ! command=$(_get_dump_command_by_driver "$SRC_DATABASE_DRIVER" "$filename"); then
+        echo "Error during command: $command"
+        exit 1
+    fi
+
+    command=$(_command_by_host "$command" "$environment")
+
+    local is_local
+    is_local=$(_is_local "$environment")
+
+    local use_docker
+    use_docker=$([ $USE_DOCKER = true ] && echo "$is_local" || echo false)
+
+    _execute "$command" "$use_docker"
+}
+
+# RESTORE
+# restore the database based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql
+function _restore() {
+    local environment="$1"
+    local filename="$2"
+
+    filename=$(_get_fullpath "$environment" "$filename")
+
+    local command
+    if ! command=$(_get_restore_command_by_driver "$DST_DATABASE_DRIVER" "$filename"); then
+        echo "Error during command: $command"
+        exit 1
+    fi
+
+    command=$(_command_by_host "$command" "$environment")
+
+    local is_local
+    is_local=$(_is_local "$environment")
+
+    local use_docker
+    use_docker=$([ $USE_DOCKER = true ] && echo "$is_local" || echo false)
+
+    _execute "$command" "$use_docker"
+}
+
+# ZIP
+# zip the folders based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql
+function _zip() {
+    local environment="$1"
+    local filename="$2"
+
+    local containers
+    containers=$(_get_assets)
+
+    local basepath
+    basepath=$(_get_fullpath "$environment" "")
+
+    local pre_command=""
+    if [ -n "$basepath" ]; then
+        pre_command="cd $basepath && "
+    fi
+
+    local command="$pre_command zip -q -r '$filename' $containers"
+    command=$(_command_by_host "$command" "$environment")
+
+    _execute "$command" false
+}
+
+# UNZIP
+# unzip the archive based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql
+function _unzip() {
+    local environment="$1"
+    local filename="$2"
+    local basepath
+    basepath=$(_get_fullpath "$environment" "")
+
+    local pre_command=""
+    if [ -n "$basepath" ]; then
+        pre_command="cd $basepath && "
+    fi
+
+    # unzip -o %s -d %s
+    local command="$pre_command unzip -q -o '$filename' -d ."
+    command=$(_command_by_host "$command" "$environment")
+
+    _execute "$command" false
+}
+
+# DOWNLOAD
+# download the file based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql
+function _download() {
+    local environment="$1"
+    local filename="$2"
+    local command
+
+    command=$(_get_scp_download_command "$environment" "$filename")
+    if [ -z "$command" ]; then
+        return
+    fi
+
+    _execute "$command" false
+}
+
+# UPLOAD
+# upload the file based on the environment
+#
+# @environment = staging, production, local, ...
+# @filename = dump.sql
+function _upload() {
+    local environment="$1"
+    local filename="$2"
+    local command
+
+    command=$(_get_scp_upload_command "$environment" "$filename")
+    if [ -z "$command" ]; then
+        return
+    fi
+
+    _execute "$command" false
+}
+
+# PRINT HIDDEN
+# print the string hiding the password and other sensitive information
+#
+# @text = ssh -p 22 -u root -p password
+function _print_hidden() {
+    local text="$1"
+    local hide
+
+    hide=$(echo "$text" | sed -E 's/(--password=)([^ ]+)/\1********/g')
+    hide=$(echo "$hide" | xargs)
+
+    echo "$hide"
+}
+
+# EXECUTE
+# execute a command normally or via docker
+#
+# @command = ssh -p 22 -u root -p password
+# @with_docker = true, false
+function _execute() {
+    local command="$1"
+    local with_docker="$2"
+    local wrap_command="$command"
+    local command_to_print
+    if [ "$with_docker" = true ]; then
+        docker_container=$(docker ps | grep sail | cut -d " " -f 1)
+        wrap_command="DOCKER_CLI_HINTS=false docker exec -it $docker_container bash -c '$command'"
+    fi
+
+    command_to_print=$(_print_hidden "$wrap_command")
+    echo "$command_to_print"
+
+    if [ "$SENDBOX" = false ]; then
+        if ! eval "$wrap_command"; then
+            echo "Error during $command_to_print" >&2
+            exit 1
+        fi
+    fi
+}
+
+# COLORS
+# helper function to colorize the output
+#
+# @text = text to colorize
+# @color = color to use
+function _colors() {
+    local text="$1"
+    local color="$2"
+
+    case "$color" in
+        "black")   echo -e "\033[30m${text}\033[0m" ;;
+        "red")     echo -e "\033[31m${text}\033[0m" ;;
+        "green")   echo -e "\033[32m${text}\033[0m" ;;
+        "yellow")  echo -e "\033[33m${text}\033[0m" ;;
+        "blue")    echo -e "\033[34m${text}\033[0m" ;;
+        "purple")  echo -e "\033[35m${text}\033[0m" ;;
+        "cyan")    echo -e "\033[36m${text}\033[0m" ;;
+        *)         echo "$text" ;;
+    esac
+}
+
+
+# SHOW USAGE
+# show the help usage
+#
+function show_usage() {
+    echo "Usage: $0 <pull|push|config> <environment> [options]"
+    echo " "
+    echo "Options:"
+    echo "  -a, --ignore-database  Ignore database sync"
+    echo "  -d, --ignore-assets    Ignore assets sync"
+    echo "  -k, --use-docker       Use docker for database sync"
+    echo "  -s, --sendbox          Show only the commands without executing"
+    echo "  -y, --yes              Skip confirmation"
+    echo "  -c, --no-cleanup       Skip cleanup"
+    echo "  -h, --help             Show this help"
+    echo " "
+    echo "Examples:"
+    echo " "
+    echo "Pull from staging to local skipping confirmations"
+    echo "  $0 pull staging --yes"
+    echo "------------------------"
+    echo "Pull from staging to local using docker commands"
+    echo "  $0 pull staging --use-docker"
+    echo "------------------------"
+    echo "Pull from staging to local database and assets"
+    echo "  $0 pull staging"
+    echo "------------------------"
+    echo "Pull from staging to local only database"
+    echo "  $0 push staging --ignore-assets"
+    echo "------------------------"
+    echo "Pull from staging to local only assets"
+    echo "  $0 push staging --ignore-database"
+    echo "------------------------"
+    echo "Push from local to staging database and assets"
+    echo "  $0 push staging"
+    echo "------------------------"
+    echo "Push from local to staging only database"
+    echo "  $0 push staging --ignore-assets"
+    echo "------------------------"
+    echo "Push from local to staging only assets"
+    echo "  $0 push staging --ignore-database"
+    echo " "
+    exit 0
+}
+
+ACTION="$1"
+ENVIRONMENT="$2"
+
+if [[ "$ACTION" = "config" ]]; then
+    echo "Setup the configuration file..."
+    _setup
+    exit 0
+fi
+
+shift 2
+
+# Flags
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -a|--ignore-database)
+            IGNORE_DATABASE=true
+            shift
+            ;;
+        -d|--ignore-assets)
+            IGNORE_ASSETS=true
+            shift
+            ;;
+        -k|--use-docker)
+            USE_DOCKER=true
+            shift
+            ;;
+        -s|--sendbox)
+            SENDBOX=true
+            shift
+            ;;
+        -y|--yes)
+            SKIP_CONFIRMATION=true
+            shift
+            ;;
+        -c|--no-cleanup)
+            SKIP_CLEANUP=true
+            shift
+            ;;
+        -h|--help)
+            show_usage
+            ;;
+        *)
+            echo "Option non found: $1"
+            show_usage
+            ;;
+    esac
+done
+
+valid_commands=("pull" "push")
+if ! printf '%s\n' "${valid_commands[@]}" | grep -q "^${ACTION}$"; then
+    echo "Error: invalid commmand: use ${valid_commands[*]}"
+    show_usage
+fi
+
+if [[ -z "$ENVIRONMENT" ]]; then
+    echo "Environment is required"
+    show_usage
+fi
+
+_setup
+
+case $ACTION in
+    pull)
+        if [[ "$SKIP_CONFIRMATION" = false && "$SENDBOX" = false ]]; then
+            read -p "Are you sure you want to pull from $ENVIRONMENT to local? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 0
+            fi
+        fi
+
+        pull "$ENVIRONMENT" "$IGNORE_DATABASE" "$IGNORE_ASSETS"
+        exit 0
+        ;;
+    push)
+        if [[ "$SKIP_CONFIRMATION" = false && "$SENDBOX" = false ]]; then
+            read -p "Are you sure you want to push from local to $ENVIRONMENT? [y/N] " -n 1 -r
+            echo
+            if [[ ! $REPLY =~ ^[Yy]$ ]]; then
+                exit 0
+            fi
+        fi
+
+        push "$ENVIRONMENT" "$IGNORE_DATABASE" "$IGNORE_ASSETS"
+        exit 0
+        ;;
+esac
