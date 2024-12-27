@@ -2,6 +2,12 @@
 
 <br />
 
+<p align="center">
+    <img alt="GitHub Release" src="https://img.shields.io/github/v/release/beliven-it/laravel-sync?style=for-the-badge&labelColor=2a2c2e&color=0fbccd" />
+</p>
+
+<br />
+
 A bash script used to sync the Laravel project contents between different environments.
 
 ## 💫 Usecase
