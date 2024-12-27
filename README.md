@@ -100,7 +100,7 @@ SYNC_ENVIRONMENT_ASSETS="storage/statamic/glide/containers content"
 SYNC_ENVIRONMENT_LOCAL_DB_HOST="${DB_HOST}"
 SYNC_ENVIRONMENT_LOCAL_DB_PORT="${DB_PORT}"
 SYNC_ENVIRONMENT_LOCAL_DB_USERNAME="${DB_USERNAME}"
-SYNC_ENVIRONMENT_LOCAL_DB_PASSWORD=""
+SYNC_ENVIRONMENT_LOCAL_DB_PASSWORD="${DB_PASSWORD}"
 SYNC_ENVIRONMENT_LOCAL_DB_DATABASE="${DB_DATABASE}"
 SYNC_ENVIRONMENT_LOCAL_DB_CONNECTION="${DB_CONNECTION}"
 
@@ -195,6 +195,12 @@ You can use the `--use-docker` option to use Docker to pull the database. For ex
 
 ./laravel-sync pull staging -k
 ```
+
+### How can avoid to run SSH command with plain text password?
+
+You can edit the `.env` file and add set the: `SYNC_ENVIRONMENT_<environment_choosed>_DB_PASSWORD` to empty.
+
+When you launch the commands, the script will ask you to insert the password.
 
 <br /><br />
 
