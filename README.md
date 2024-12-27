@@ -224,4 +224,4 @@ Please see [CHANGELOG](CHANGELOG.md) for more information on what has changed re
 
 ## 📝 License
 
-The script is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+The script is open-sourced software licensed under the [MIT license](LICENSE.md).
