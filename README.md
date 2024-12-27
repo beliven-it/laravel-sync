@@ -34,25 +34,15 @@ The script requires the following tools:
 
 ## ⚙️ Installation
 
-There are many ways to install the script. Here are some of them:
+You can install the script in your laravel project using the following command:
 
-### Cloning the repository
+```bash
+curl https://raw.githubusercontent.com/beliven-it/laravel-sync/main/install.sh | bash
+```
 
-1. Clone the repository.
-2. Copy the `laravel-sync` file to the root of your Laravel project.
-3. Make the file executable by running `chmod +x laravel-sync`.
+This command download the latest release of the script and make it executable.
 
-### Downloading the file
-
-1. Download the `laravel-sync` file.
-2. Copy the file to the root of your Laravel project.
-3. Make the file executable by running `chmod +x laravel-sync`.
-
-### Copying the content
-
-1. Create a new file called `laravel-sync` in the root of your Laravel project.
-2. Copy the content of the `laravel-sync` file from the repository to the new file.
-3. Make the file executable by running `chmod +x laravel-sync`.
+### Global installation
 
 You can also move the file to a directory that is in your `$PATH`, such as `/usr/local/bin`.
 
