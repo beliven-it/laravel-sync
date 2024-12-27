@@ -1,19 +1,6 @@
 #!/bin/bash
 
-SRC_DATABASE_HOST=""
-SRC_DATABASE_PORT=""
-SRC_DATABASE_USER=""
-SRC_DATABASE_PASSWORD=""
-SRC_DATABASE_NAME=""
-SRC_DATABASE_DRIVER=""
-
-DST_DATABASE_HOST=""
-DST_DATABASE_PORT=""
-DST_DATABASE_USER=""
-DST_DATABASE_PASSWORD=""
-DST_DATABASE_NAME=""
-DST_DATABASE_DRIVER=""
-
+# Flags
 IGNORE_DATABASE=false
 IGNORE_ASSETS=false
 USE_DOCKER=false
@@ -45,8 +32,7 @@ function pull() {
 
     echo "PULL $environment -> LOCAL"
 
-    _get_src_environment "$environment"
-    _get_dst_environment "local"
+    _has_environment "$environment"
 
     local remote_environment_label
     remote_environment_label=$(_colors "[$environment]" "$REMOTE_COLOR")
@@ -108,8 +94,7 @@ function push() {
 
     echo "PUSH LOCAL -> $environment"
 
-    _get_src_environment "local"
-    _get_dst_environment "$environment"
+    _has_environment "$environment"
 
     local remote_environment_label
     remote_environment_label=$(_colors "[$environment]" "$REMOTE_COLOR")
@@ -382,23 +367,37 @@ function _get_env_by_key() {
 # GET RESTORE COMMAND BY DRIVER
 # return the database restore command by driver
 #
-# @driver = mysql      | The database driver
-# @filename = dump.sql | The dump filename to restore
-function _get_restore_command_by_driver() {
-    local driver="$1"
+# @driver = staging, production      | The database driver
+# @filename = dump.sql               | The dump filename to restore
+function _get_restore_command() {
+    local environment="$1"
     local filename="$2"
 
-    case $driver in
+    local db_host
+    local db_port
+    local db_user
+    local db_name
+    local db_password
+    local db_driver
+
+    db_host=$(_get_env_by_key "$environment" "db_host")
+    db_port=$(_get_env_by_key "$environment" "db_port")
+    db_user=$(_get_env_by_key "$environment" "db_username")
+    db_name=$(_get_env_by_key "$environment" "db_database")
+    db_password=$(_get_env_by_key "$environment" "db_password")
+    db_driver=$(_get_env_by_key "$environment" "db_connection")
+
+    case $db_driver in
         "mysql")
             password_partial="--password"
-            if [ -n "$DST_DATABASE_PASSWORD" ]; then
-                password_partial="--password='$DST_DATABASE_PASSWORD'"
+            if [ -n "$db_password" ]; then
+                password_partial="--password='$db_password'"
             fi
 
-            echo "mysql --port=$DST_DATABASE_PORT --host=$DST_DATABASE_HOST --user=$DST_DATABASE_USER $password_partial $DST_DATABASE_NAME < $filename"
+            echo "mysql --port=$db_port --host=$db_host --user=$db_user $password_partial $db_name < $filename"
             ;;
         *)
-            echo "Driver not supported $driver"
+            echo "Driver not supported $db_driver"
             exit 1
             ;;
     esac
@@ -407,23 +406,37 @@ function _get_restore_command_by_driver() {
 # GET DUMP COMMAND BY DRIVER
 # return the database dump command by driver
 #
-# @driver = mysql      | The database driver
-# @filename = dump.sql | The filename to save the dump
-function _get_dump_command_by_driver() {
-    local driver="$1"
+# @environment = staging, production      | The database driver
+# @filename = dump.sql                    | The filename to save the dump
+function _get_dump_command() {
+    local environment="$1"
     local filename="$2"
 
-    case $driver in
+    local db_host
+    local db_port
+    local db_user
+    local db_name
+    local db_password
+    local db_driver
+
+    db_host=$(_get_env_by_key "$environment" "db_host")
+    db_port=$(_get_env_by_key "$environment" "db_port")
+    db_user=$(_get_env_by_key "$environment" "db_username")
+    db_name=$(_get_env_by_key "$environment" "db_database")
+    db_password=$(_get_env_by_key "$environment" "db_password")
+    db_driver=$(_get_env_by_key "$environment" "db_connection")
+
+    case $db_driver in
         "mysql")
             local password_partial="--password"
-            if [ -n "$SRC_DATABASE_PASSWORD" ]; then
-                password_partial="--password='$SRC_DATABASE_PASSWORD'"
+            if [ -n "$db_password" ]; then
+                password_partial="--password='$db_password'"
             fi
 
-            echo "mysqldump --add-drop-table --no-tablespaces --port=$SRC_DATABASE_PORT --host=$SRC_DATABASE_HOST --user=$SRC_DATABASE_USER $password_partial $SRC_DATABASE_NAME > $filename"
+            echo "mysqldump --add-drop-table --no-tablespaces --port=$db_port --host=$db_host --user=$db_user $password_partial $db_name > $filename"
             ;;
         *)
-            echo "Driver not supported $driver"
+            echo "Driver not supported $db_driver"
             exit 1
             ;;
     esac
@@ -561,40 +574,6 @@ function _command_by_host() {
     echo "$wrap_command '$command'"
 }
 
-# GET SRC ENVIRONMENT
-# set the source environment variables based on the environment
-#
-# @environment = staging, production, local, ...
-function _get_src_environment() {
-    local environment="$1"
-
-    _has_environment "$environment"
-
-    SRC_DATABASE_HOST=$(_get_env_by_key "$environment" "db_host")
-    SRC_DATABASE_PORT=$(_get_env_by_key "$environment" "db_port")
-    SRC_DATABASE_USER=$(_get_env_by_key "$environment" "db_username")
-    SRC_DATABASE_NAME=$(_get_env_by_key "$environment" "db_database")
-    SRC_DATABASE_PASSWORD=$(_get_env_by_key "$environment" "db_password")
-    SRC_DATABASE_DRIVER=$(_get_env_by_key "$environment" "db_connection")
-}
-
-# GET DST ENVIRONMENT
-# set the destination environment variables based on the environment
-#
-# @environment = staging, production, local, ...
-function _get_dst_environment() {
-    local environment="$1"
-
-    _has_environment "$environment"
-
-    DST_DATABASE_HOST=$(_get_env_by_key "$environment" "db_host")
-    DST_DATABASE_PORT=$(_get_env_by_key "$environment" "db_port")
-    DST_DATABASE_USER=$(_get_env_by_key "$environment" "db_username")
-    DST_DATABASE_NAME=$(_get_env_by_key "$environment" "db_database")
-    DST_DATABASE_PASSWORD=$(_get_env_by_key "$environment" "db_password")
-    DST_DATABASE_DRIVER=$(_get_env_by_key "$environment" "db_connection")
-}
-
 # IS LOCAL
 # check if the environment is local
 #
@@ -622,7 +601,7 @@ function _dump() {
     filename=$(_get_fullpath "$environment" "$filename")
 
     local command
-    if ! command=$(_get_dump_command_by_driver "$SRC_DATABASE_DRIVER" "$filename"); then
+    if ! command=$(_get_dump_command "$environment" "$filename"); then
         echo "Error during command: $command"
         exit 1
     fi
@@ -650,7 +629,7 @@ function _restore() {
     filename=$(_get_fullpath "$environment" "$filename")
 
     local command
-    if ! command=$(_get_restore_command_by_driver "$DST_DATABASE_DRIVER" "$filename"); then
+    if ! command=$(_get_restore_command "$environment" "$filename"); then
         echo "Error during command: $command"
         exit 1
     fi
