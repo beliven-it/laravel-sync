@@ -15,8 +15,10 @@ With this script you can now sync the database and assets between the environmen
 
 > [!WARNING]
 > ⚠️ ⚠️ ⚠️
+>
 > This script provide a `push` command to a remote environment.
 > Make sure to have a backup of the remote environment before using the `push` command.
+>
 > ⚠️ ⚠️ ⚠️
 
 <br /><br />
@@ -64,7 +66,8 @@ This allow you to run the script from any directory.
 laravel-sync -h
 ```
 
-> [!INFO]
+> [!NOTE]
+>
 > Make sure to use a tagged version of the script to avoid any issue.
 
 <br /><br />
@@ -214,6 +217,8 @@ Make sure to run use `shellcheck` to lint the script.
 ```bash
 shellcheck laravel-sync
 ```
+
+<br /><br />
 
 ## 📝 Changelog
 
