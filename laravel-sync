@@ -770,6 +770,15 @@ function _execute() {
     fi
 }
 
+# CHECK IS LARAVEL FOLDER
+# check if the current folder is a Laravel project
+function _check_is_laravel_folder() {
+    if [ ! -f artisan ]; then
+        echo "This is not a Laravel project"
+        exit 1
+    fi
+}
+
 # COLORS
 # helper function to colorize the output
 #
@@ -835,6 +844,14 @@ function show_usage() {
     echo " "
     exit 0
 }
+
+##################################################
+################## ENTRY POINT ###################
+##################################################
+
+# Before starting the script check if the current folder is a Laravel project
+# otherwise exit with an error
+_check_is_laravel_folder
 
 ACTION="$1"
 ENVIRONMENT="$2"
