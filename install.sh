@@ -16,7 +16,7 @@ latest_release=$(curl -s https://api.github.com/repos/$repository/releases/lates
 
 if [ -n "$latest_release" ]; then
 	echo "Latest release: $latest_release"
-	echo "Download the latest relase of $repository ..."
+	echo "Download the latest release of $repository ..."
 
 	curl -sL "$latest_release" -o /tmp/archive.zip
 	unzip -q -j /tmp/archive.zip -d /tmp/archive
