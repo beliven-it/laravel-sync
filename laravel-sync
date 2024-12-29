@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Version
+# The version number will be replaced by the CI/CD pipeline
+VERSION="undefined"
+
 # Flags
 IGNORE_DATABASE=false
 IGNORE_ASSETS=false
@@ -9,13 +13,12 @@ SKIP_CONFIRMATION=false
 SKIP_CLEANUP=false
 IS_CONFIRMED=false
 
+# Constants
 CONFIG_FILE=".env"
 ZIP_FILENAME="dump.zip"
 SQL_FILENAME="dump.sql"
-
 REMOTE_COLOR="red"
 LOCAL_COLOR="green"
-
 LOCAL_ENVIRONMENT="local"
 
 # Trap the exit signal to cleanup the dump files
@@ -160,9 +163,10 @@ function _has_environment() {
 
 	if [ -z "$in_array" ]; then
 		echo "Environment $(_colors "$environment" "$REMOTE_COLOR") not allowed."
+		echo " "
 		echo "Make sure to set the environment in the allowed list."
 		echo " "
-		echo " SYNC_ENVIRONMENT_ALLOWED='staging production'"
+		_colors "SYNC_ENVIRONMENT_ALLOWED='staging production'" "yellow"
 		echo " "
 		echo "Than run:"
 		echo " "
@@ -597,6 +601,11 @@ function _is_local() {
 # LOAD ENV
 # load the configuration file
 function _load_env() {
+	if [ ! -f "$CONFIG_FILE" ]; then
+		echo "Configuration file $(_colors $CONFIG_FILE "red") not found"
+		exit 1
+	fi
+
 	# shellcheck disable=SC1090
 	source "$CONFIG_FILE"
 }
@@ -866,13 +875,14 @@ function show_usage() {
 
 # Before starting the script check if the current folder is a Laravel project
 # otherwise exit with an error
-_check_is_laravel_folder
-_load_env
 
 ACTION="$1"
 ENVIRONMENT="$2"
 
 if [[ "$ACTION" = "config" ]]; then
+	_check_is_laravel_folder
+	_load_env
+
 	echo "Setup the configuration file..."
 	_setup
 	exit 0
@@ -910,6 +920,10 @@ while [[ $# -gt 0 ]]; do
 	-h | --help)
 		show_usage
 		;;
+	-v | --version)
+		echo "$0 $VERSION"
+		exit 0
+		;;
 	*)
 		echo "Option non found: $(_colors "$1" "red")"
 		show_usage
@@ -930,6 +944,8 @@ if [[ -z "$ENVIRONMENT" ]]; then
 	show_usage
 fi
 
+_check_is_laravel_folder
+_load_env
 _has_environment "$ENVIRONMENT"
 
 case $ACTION in

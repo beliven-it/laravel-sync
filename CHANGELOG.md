@@ -2,6 +2,12 @@
 
 All notable changes to `laravel-sync` will be documented in this file.
 
+## 1.3.0 - 2024-12-29
+
+### Features
+
+- Add `--version` flag
+
 ## 1.2.0 - 2024-12-29
 
 ### Refactor
