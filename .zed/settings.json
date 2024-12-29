@@ -1,0 +1,11 @@
+{
+  "languages": {
+    "Shell Script": {
+      "formatter": {
+        "external": {
+          "command": "shfmt"
+        }
+      }
+    }
+  }
+}
