@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # Version
-# The version number will be replaced by the CI/CD pipeline
-VERSION="undefined"
+# Remember to update the version in this file
+VERSION="1.3.0"
 
 # Flags
 IGNORE_DATABASE=false

@@ -1,0 +1,40 @@
+name: Check Version in Script
+
+on:
+  release:
+    types:
+      - published
+
+jobs:
+  verify-version:
+    runs-on: ubuntu-latest
+
+    steps:
+      # Checkout del repository
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      # Estrai la versione dal tag
+      - name: Extract version from tag
+        id: extract_tag
+        run: echo "TAG_VERSION=${GITHUB_REF_NAME#refs/tags/}" >> $GITHUB_ENV
+
+      # Controlla la versione nello script
+      - name: Verify script version matches tag
+        id: check_version
+        run: |
+          # Estrai la versione dallo script
+          SCRIPT_VERSION=$(grep '^VERSION=' laravel-sync | cut -d'"' -f2)
+
+          # Confronta le versioni
+          if [ "$SCRIPT_VERSION" != "$TAG_VERSION" ]; then
+            echo "Version mismatch: Script VERSION=$SCRIPT_VERSION, Tag VERSION=$TAG_VERSION"
+            exit 1
+          fi
+
+          echo "Script version matches tag version: $SCRIPT_VERSION"
+
+      # Passaggio opzionale per notificare il successo (puoi personalizzarlo o eliminarlo)
+      - name: Notify success
+        if: success()
+        run: echo "Version check passed successfully!"
