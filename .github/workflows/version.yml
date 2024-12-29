@@ -16,7 +16,7 @@ jobs:
       - name: Update script version
         run: |
           TAG=${GITHUB_REF#refs/tags/}
-          sed -i '' "s/^VERSION=\".*\"/VERSION=\"$TAG\"/" laravel-sync
+          sed -i "s/^VERSION=\".*\"/VERSION=\"$TAG\"/" laravel-sync
 
       - name: Push the version hardcoded
         run: |
