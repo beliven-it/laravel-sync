@@ -1,6 +1,7 @@
 {
   "languages": {
     "Shell Script": {
+      "language_servers": ["..."],
       "formatter": {
         "external": {
           "command": "shfmt"
