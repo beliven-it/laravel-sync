@@ -2,6 +2,13 @@
 
 All notable changes to `laravel-sync` will be documented in this file.
 
+## 1.2.0 - 2024-12-29
+
+### Refactor
+
+- Improve configuration workflow
+- Small code changes
+
 ## 1.1.0 - 2024-12-29
 
 ### Features
