@@ -34,8 +34,6 @@ function pull() {
 
     echo "PULL $environment -> $LOCAL_ENVIRONMENT"
 
-    _has_environment "$environment"
-
     local remote_environment_label
     remote_environment_label=$(_colors "[$environment]" "$REMOTE_COLOR")
 
@@ -95,8 +93,6 @@ function push() {
     local ignore_assets="$3"
 
     echo "PUSH $LOCAL_ENVIRONMENT -> $environment"
-
-    _has_environment "$environment"
 
     local remote_environment_label
     remote_environment_label=$(_colors "[$environment]" "$REMOTE_COLOR")
@@ -163,9 +159,13 @@ function _has_environment() {
     in_array=$(echo "$available_environments" | grep "$environment")
 
     if [ -z "$in_array" ]; then
-        echo "Environment $(_colors "$environment" "$REMOTE_COLOR" ) not allowed. Make sure to set the environment in the allowed list. Example:"
+        echo "Environment $(_colors "$environment" "$REMOTE_COLOR" ) not allowed. Make sure to set the environment in the allowed list."
         echo " "
         echo " SYNC_ENVIRONMENT_ALLOWED='staging production'"
+        echo " "
+        echo "Than run:"
+        echo " "
+        _colors "$0 config" "yellow"
         echo " "
         exit 1
     fi
@@ -176,7 +176,7 @@ function _has_environment() {
 #
 function _setup() {
     # shellcheck disable=SC1090
-    source "$CONFIG_FILE"
+    _load_env
 
     read -ra default_envs_keys_array <<< "$(_get_env_by_key "" "allowed")"
     echo "Environments: $(_get_env_by_key "" "allowed")"
@@ -256,9 +256,6 @@ function _setup() {
             echo " " >> "$CONFIG_FILE"
         fi
     done
-
-    # shellcheck disable=SC1090
-    source "$CONFIG_FILE"
 }
 
 # CLEANUP LOCAL
@@ -596,6 +593,13 @@ function _is_local() {
     echo false
 }
 
+# LOAD ENV
+# load the configuration file
+function _load_env() {
+    # shellcheck disable=SC1090
+    source "$CONFIG_FILE"
+}
+
 # DUMP
 # dump the database based on the environment
 #
@@ -863,6 +867,7 @@ function show_usage() {
 # Before starting the script check if the current folder is a Laravel project
 # otherwise exit with an error
 _check_is_laravel_folder
+_load_env
 
 ACTION="$1"
 ENVIRONMENT="$2"
@@ -906,7 +911,7 @@ while [[ $# -gt 0 ]]; do
             show_usage
             ;;
         *)
-            echo "Option non found: $1"
+            echo "Option non found: $(_colors "$1" "red")"
             show_usage
             ;;
     esac
@@ -914,16 +919,18 @@ done
 
 valid_commands=("pull" "push")
 if ! printf '%s\n' "${valid_commands[@]}" | grep -q "^${ACTION}$"; then
-    echo "Invalid commmand ${valid_commands[*]}"
+    echo "Invalid commmand $(_colors "${ACTION}" "red" )"
+    echo "------------------------"
     show_usage
 fi
 
 if [[ -z "$ENVIRONMENT" ]]; then
     echo "The $(_colors "environment" "red") argument is required"
+    echo "------------------------"
     show_usage
 fi
 
-_setup
+_has_environment "$ENVIRONMENT"
 
 case $ACTION in
     pull)
