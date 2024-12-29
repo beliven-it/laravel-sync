@@ -159,7 +159,8 @@ function _has_environment() {
 	in_array=$(echo "$available_environments" | grep "$environment")
 
 	if [ -z "$in_array" ]; then
-		echo "Environment $(_colors "$environment" "$REMOTE_COLOR") not allowed. Make sure to set the environment in the allowed list."
+		echo "Environment $(_colors "$environment" "$REMOTE_COLOR") not allowed."
+		echo "Make sure to set the environment in the allowed list."
 		echo " "
 		echo " SYNC_ENVIRONMENT_ALLOWED='staging production'"
 		echo " "
