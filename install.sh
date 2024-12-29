@@ -7,19 +7,23 @@ _cleanup() {
 	rm -rf /tmp/archive
 }
 
-echo "Download the latest relase..."
+key_to_link="zipball_url"
+vendor="beliven-it"
+repository_name="laravel-sync"
+repository="$vendor/$repository_name"
 
-LATEST_RELEASE=$(curl -s https://api.github.com/repos/beliven-it/laravel-sync/releases/latest | grep "zipball_url" | cut -d '"' -f 4)
+latest_release=$(curl -s https://api.github.com/repos/$repository/releases/latest | grep "$key_to_link" | cut -d '"' -f 4)
 
-echo "Latest release: $LATEST_RELEASE"
+if [ -n "$latest_release" ]; then
+	echo "Latest release: $latest_release"
+	echo "Download the latest relase of $repository ..."
 
-if [ -n "$LATEST_RELEASE" ]; then
-	curl -sL "$LATEST_RELEASE" -o /tmp/archive.zip
+	curl -sL "$latest_release" -o /tmp/archive.zip
 	unzip -q -j /tmp/archive.zip -d /tmp/archive
-	cp -r /tmp/archive/laravel-sync .
-	chmod +x laravel-sync
+	cp -r /tmp/archive/$repository_name .
+	chmod +x $repository_name
 	echo "Done!"
 else
-	echo "Cannot find the latest release"
+	echo "Cannot find a release for $repository"
 	exit 1
 fi
