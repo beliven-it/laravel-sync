@@ -161,8 +161,10 @@ function _has_environment() {
     in_array=$(echo "$available_environments" | grep "$environment")
 
     if [ -z "$in_array" ]; then
-        echo "Environment $environment not allowed. Make sure to set the environment in the allowed list"
-        echo "SYNC_ENVIRONMENT_ALLOWED='staging production'"
+        echo "Environment $(_colors "$environment" "$REMOTE_COLOR" ) not allowed. Make sure to set the environment in the allowed list. Example:"
+        echo " "
+        echo " SYNC_ENVIRONMENT_ALLOWED='staging production'"
+        echo " "
         exit 1
     fi
 }
@@ -397,7 +399,7 @@ function _get_restore_command() {
             echo "mysql --port=$db_port --host=$db_host --user=$db_user $password_partial $db_name < $filename"
             ;;
         *)
-            echo "Driver not supported $db_driver"
+            echo "Driver $(_colors "$db_driver" "red") not supported"
             exit 1
             ;;
     esac
@@ -436,7 +438,7 @@ function _get_dump_command() {
             echo "mysqldump --add-drop-table --no-tablespaces --port=$db_port --host=$db_host --user=$db_user $password_partial $db_name > $filename"
             ;;
         *)
-            echo "Driver not supported $db_driver"
+            echo "Driver $(_colors "$db_driver" "red") not supported"
             exit 1
             ;;
     esac
@@ -602,7 +604,7 @@ function _dump() {
 
     local command
     if ! command=$(_get_dump_command "$environment" "$filename"); then
-        echo "Error during command: $command"
+        echo "$command"
         exit 1
     fi
 
@@ -630,7 +632,7 @@ function _restore() {
 
     local command
     if ! command=$(_get_restore_command "$environment" "$filename"); then
-        echo "Error during command: $command"
+        echo "$command"
         exit 1
     fi
 
@@ -653,14 +655,12 @@ function _restore() {
 function _zip() {
     local environment="$1"
     local filename="$2"
-
+    local pre_command=""
+    local basepath
     local containers
     containers=$(_get_assets)
 
-    local basepath
     basepath=$(_get_fullpath "$environment" "")
-
-    local pre_command=""
     if [ -n "$basepath" ]; then
         pre_command="cd $basepath && "
     fi
@@ -680,9 +680,9 @@ function _unzip() {
     local environment="$1"
     local filename="$2"
     local basepath
-    basepath=$(_get_fullpath "$environment" "")
-
     local pre_command=""
+
+    basepath=$(_get_fullpath "$environment" "")
     if [ -n "$basepath" ]; then
         pre_command="cd $basepath && "
     fi
@@ -764,7 +764,7 @@ function _execute() {
 
     if [ "$SENDBOX" = false ]; then
         if ! eval "$wrap_command"; then
-            echo "Error during $command_to_print" >&2
+            echo "Error on $command_to_print" >&2
             exit 1
         fi
     fi
@@ -774,7 +774,7 @@ function _execute() {
 # check if the current folder is a Laravel project
 function _check_is_laravel_folder() {
     if [ ! -f artisan ]; then
-        echo "This is not a Laravel project"
+        echo "This is not a $(_colors "Laravel" "red") project"
         exit 1
     fi
 }
@@ -903,12 +903,12 @@ done
 
 valid_commands=("pull" "push")
 if ! printf '%s\n' "${valid_commands[@]}" | grep -q "^${ACTION}$"; then
-    echo "Error: invalid commmand: use ${valid_commands[*]}"
+    echo "Invalid commmand ${valid_commands[*]}"
     show_usage
 fi
 
 if [[ -z "$ENVIRONMENT" ]]; then
-    echo "Environment is required"
+    echo "The $(_colors "environment" "red") argument is required"
     show_usage
 fi
 
@@ -917,7 +917,7 @@ _setup
 case $ACTION in
     pull)
         if [[ "$SKIP_CONFIRMATION" = false && "$SENDBOX" = false ]]; then
-            read -p "Are you sure you want to pull from $ENVIRONMENT to local? [y/N] " -n 1 -r
+            read -p "Are you sure you want to pull from $( _colors "$ENVIRONMENT" "$REMOTE_COLOR" ) to $( _colors "local" "$LOCAL_COLOR" )? [y/N] " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
                 exit 0
@@ -929,7 +929,7 @@ case $ACTION in
         ;;
     push)
         if [[ "$SKIP_CONFIRMATION" = false && "$SENDBOX" = false ]]; then
-            read -p "Are you sure you want to push from local to $ENVIRONMENT? [y/N] " -n 1 -r
+            read -p "Are you sure you want to push from $( _colors "local" "$LOCAL_COLOR" ) to $( _colors "$ENVIRONMENT" "$REMOTE_COLOR" )? [y/N] " -n 1 -r
             echo
             if [[ ! $REPLY =~ ^[Yy]$ ]]; then
                 exit 0
