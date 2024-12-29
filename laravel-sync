@@ -200,13 +200,13 @@ function _setup() {
 
     # Create the default for local values
     local local_env
-    local_env=$(echo "$LOCAL_ENVIRONMENT" | tr '[:lower:]' '[:upper:]')
+    local_env=$(_to_upper "$LOCAL_ENVIRONMENT")
 
     local count
     count=0
 
     for key in "${default_db_keys_array[@]}"; do
-        key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
+        key=$(_to_upper "$key")
 
         var_name="SYNC_ENVIRONMENT_${local_env}_${key}"
         value=$(echo "$content" | grep "$var_name")
@@ -224,8 +224,8 @@ function _setup() {
     for env in "${default_envs_keys_array[@]}"; do
         count=0
         for key in "${default_db_keys_array[@]}"; do
-            key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
-            env=$(echo "$env" | tr '[:lower:]' '[:upper:]')
+            key=$(_to_upper "$key")
+            env=$(_to_upper "$env")
 
             var_name="SYNC_ENVIRONMENT_${env}_${key}"
 
@@ -241,8 +241,8 @@ function _setup() {
 
         count=0
         for key in "${default_host_keys_array[@]}"; do
-            key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
-            env=$(echo "$env" | tr '[:lower:]' '[:upper:]')
+            key=$(_to_upper "$key")
+            env=$(_to_upper "$env")
 
             var_name="SYNC_ENVIRONMENT_${env}_${key}"
 
@@ -355,8 +355,8 @@ function _get_env_by_key() {
     local environment="$1"
     local key="$2"
 
-    key=$(echo "$key" | tr '[:lower:]' '[:upper:]')
-    environment=$(echo "$environment" | tr '[:lower:]' '[:upper:]')
+    key=$(_to_upper "$key")
+    environment=$(_to_upper "$environment")
 
     if [ -z "$environment" ]; then
         var_name="SYNC_ENVIRONMENT_${key}"
@@ -803,6 +803,12 @@ function _colors() {
         "cyan")    echo -e "\033[36m${text}\033[0m" ;;
         *)         echo "$text" ;;
     esac
+}
+
+function _to_upper() {
+    local text="$1"
+
+    echo "$text" | tr '[:lower:]' '[:upper:]'
 }
 
 
