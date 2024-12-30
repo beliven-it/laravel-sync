@@ -5,9 +5,9 @@ vendor="beliven-it"
 repository_name="laravel-sync"
 repository="$vendor/$repository_name"
 archive_name="archive"
-
 archive_path_folder="/tmp/$archive_name"
 archive_path_zip="$archive_path_folder.zip"
+random_key=$(shuf -i 1-100000 -n 1)
 
 trap _cleanup EXIT
 
@@ -16,7 +16,7 @@ _cleanup() {
 	rm -rf $archive_path_folder
 }
 
-latest_release=$(curl -s https://api.github.com/repos/$repository/releases/latest | grep "$key_to_link" | cut -d '"' -f 4)
+latest_release=$(curl -s "https://api.github.com/repos/$repository/releases/latest?key=$random_key" | grep "$key_to_link" | cut -d '"' -f 4)
 
 if [ -n "$latest_release" ]; then
 	echo "Latest release: $latest_release"
