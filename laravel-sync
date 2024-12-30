@@ -819,6 +819,10 @@ function _colors() {
 	esac
 }
 
+# TO UPPER
+# convert the text to uppercase
+#
+# @text = text to convert
 function _to_upper() {
 	local text="$1"
 
