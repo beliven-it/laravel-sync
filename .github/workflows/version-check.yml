@@ -12,7 +12,7 @@ jobs:
     steps:
       # Checkout del repository
       - name: Checkout repository
-        uses: actions/checkout@v3
+        uses: actions/checkout@v6
 
       # Estrai la versione dal tag
       - name: Extract version from tag
